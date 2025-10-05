@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Clock, Trophy, TrendingUp, RotateCcw, CheckCircle } from 'lucide-react';
+import { Play, Pause, RotateCcw, CheckCircle, Clock, Trophy, TrendingUp } from 'lucide-react';
 
 const TimeTrialComponent = () => {
   // Timer state
-  const [timeRemaining, setTimeRemaining] = useState(600); // 10 minutes in seconds
+  const [timeRemaining, setTimeRemaining] = useState(600);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -22,46 +22,33 @@ const TimeTrialComponent = () => {
   // Database connection
   const [supabaseUrl] = useState('https://jucqobldwrhehufxdisd.supabase.co');
   const [supabaseKey, setSupabaseKey] = useState('');
-  const [userId] = useState(1);
-  
+const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');  
   const intervalRef = useRef(null);
-  
-  // Available units for all modalities
+
+  // Available units - matching your database constraints
   const scoreUnits = [
-    { value: 'calories', label: 'Calories' },
-    { value: 'meters', label: 'Meters' },
-    { value: 'kilometers', label: 'Kilometers' },
+    { value: 'cal', label: 'Calories' },
+    { value: 'watts', label: 'Watts (Average)' },
+    { value: 'mph', label: 'MPH' },
+    { value: 'kph', label: 'KPH' },
     { value: 'miles', label: 'Miles' },
-    { value: 'watts', label: 'Watts (Average)' }
+    { value: 'meters', label: 'Meters' }
   ];
 
-  // Available modalities - organized by equipment category
+  // Available modalities - matching your database constraints
   const modalities = [
-    // Rowing Equipment
-    { value: 'c2_rowing_erg', label: 'C2 Rowing Erg', category: 'Rowing' },
-    { value: 'rogue_rowing_erg', label: 'Rogue Rowing Erg', category: 'Rowing' },
-    
-    // Cycling Equipment
+    { value: 'c2_row_erg', label: 'C2 Rowing Erg', category: 'Rowing' },
+    { value: 'rogue_row_erg', label: 'Rogue Rowing Erg', category: 'Rowing' },
     { value: 'c2_bike_erg', label: 'C2 Bike Erg', category: 'Cycling' },
     { value: 'echo_bike', label: 'Echo Bike', category: 'Cycling' },
-    { value: 'air_bike', label: 'Air Bike', category: 'Cycling' },
-    { value: 'peloton', label: 'Peloton', category: 'Cycling' },
-    { value: 'airdyne', label: 'AirDyne', category: 'Cycling' },
+    { value: 'assault_bike', label: 'Assault Bike', category: 'Cycling' },
+    { value: 'airdyne_bike', label: 'AirDyne Bike', category: 'Cycling' },
     { value: 'other_bike', label: 'Other Bike', category: 'Cycling' },
-    
-    // Ski Equipment
     { value: 'c2_ski_erg', label: 'C2 Ski Erg', category: 'Ski' },
-    
-    // Treadmill/Running Equipment
-    { value: 'assault_runner_treadmill', label: 'Assault Runner Treadmill', category: 'Treadmill' },
+    { value: 'assault_runner', label: 'Assault Runner Treadmill', category: 'Treadmill' },
     { value: 'trueform_treadmill', label: 'TrueForm Treadmill', category: 'Treadmill' },
-    { value: 'other_curved_treadmill', label: 'Other Curved Treadmill', category: 'Treadmill' },
     { value: 'motorized_treadmill', label: 'Motorized Treadmill', category: 'Treadmill' },
-    
-    // Running (Outdoor)
-    { value: 'run_track', label: 'Run (Track)', category: 'Running' },
-    { value: 'run_road', label: 'Run (Road)', category: 'Running' },
-    { value: 'run_trails', label: 'Run (Trails)', category: 'Running' }
+    { value: 'outdoor_run', label: 'Outdoor Run', category: 'Running' }
   ];
 
   // Timer effect with audio notifications
@@ -71,12 +58,11 @@ const TimeTrialComponent = () => {
         setTimeRemaining(prev => {
           const newTime = prev - 1;
           
-          // Audio notifications
-          if (newTime === 300) { // 5 minutes / halfway
+          if (newTime === 300) {
             console.log('Halfway point notification');
-          } else if (newTime === 60) { // 1 minute remaining
+          } else if (newTime === 60) {
             console.log('1 minute remaining notification');
-          } else if (newTime === 0) { // Finished
+          } else if (newTime === 0) {
             console.log('Time trial completed notification');
             setIsRunning(false);
             setIsCompleted(true);
@@ -157,6 +143,12 @@ const TimeTrialComponent = () => {
     setBaseline(null);
   };
 
+  const skipToEnd = () => {
+    setIsRunning(false);
+    setIsCompleted(true);
+    setTimeRemaining(0);
+  };
+
   const calculateBaseline = () => {
     if (!score || isNaN(score) || parseFloat(score) <= 0) {
       alert('Please enter a valid score');
@@ -184,12 +176,12 @@ const TimeTrialComponent = () => {
       const timeTrialData = {
         user_id: userId,
         modality: selectedModality,
-        score: parseFloat(score),
+        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+        total_output: parseFloat(score),
         units: units,
-        baseline_units_per_minute: baseline,
-        duration_minutes: 10,
-        completed_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
+        calculated_rpm: baseline,
+        duration_seconds: 600, // 10 minutes = 600 seconds
+        is_current: true
       };
 
       const response = await fetch(`${supabaseUrl}/rest/v1/time_trials`, {
@@ -208,7 +200,9 @@ const TimeTrialComponent = () => {
         loadPreviousBaselines();
         console.log('Navigate to dashboard');
       } else {
-        throw new Error('Failed to save time trial');
+        const errorText = await response.text();
+        console.error('Supabase error response:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
     } catch (error) {
       console.error('Error saving time trial:', error);
@@ -220,7 +214,6 @@ const TimeTrialComponent = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-3">
           <Trophy className="w-8 h-8 text-yellow-500" />
@@ -231,7 +224,6 @@ const TimeTrialComponent = () => {
         </p>
       </div>
 
-      {/* Database Connection */}
       {!supabaseKey && (
         <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <h3 className="font-medium text-yellow-900 mb-2">Database Connection Required</h3>
@@ -250,9 +242,7 @@ const TimeTrialComponent = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column - Timer and Controls */}
         <div className="space-y-6">
-          {/* Modality Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select Modality
@@ -307,10 +297,8 @@ const TimeTrialComponent = () => {
             </select>
           </div>
 
-          {/* Timer Display */}
           <div className="text-center">
             <div className="relative w-48 h-48 mx-auto mb-4">
-              {/* Progress Circle */}
               <svg className="w-48 h-48 transform -rotate-90">
                 <circle
                   cx="96"
@@ -336,7 +324,6 @@ const TimeTrialComponent = () => {
                 />
               </svg>
               
-              {/* Timer Text */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <div className="text-4xl font-bold text-gray-900">
@@ -349,7 +336,6 @@ const TimeTrialComponent = () => {
               </div>
             </div>
 
-            {/* Control Buttons */}
             <div className="flex justify-center gap-3">
               {!isRunning && !isCompleted && (
                 <button
@@ -379,13 +365,21 @@ const TimeTrialComponent = () => {
                 <RotateCcw className="w-5 h-5" />
                 Reset
               </button>
+              
+              {(isRunning || isPaused) && (
+                <button
+                  onClick={skipToEnd}
+                  className="bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 flex items-center gap-2"
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  Skip to End (Test)
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Right Column - Score Input and Results */}
         <div className="space-y-6">
-          {/* Score Input and Units */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -425,7 +419,6 @@ const TimeTrialComponent = () => {
             {isCompleted ? 'Enter your final score and select units from the 10-minute trial' : 'Complete the time trial first'}
           </p>
 
-          {/* Calculate Baseline */}
           {isCompleted && score && units && (
             <div>
               <button
@@ -438,7 +431,6 @@ const TimeTrialComponent = () => {
             </div>
           )}
 
-          {/* Baseline Result */}
           {baseline && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h3 className="font-medium text-green-900 mb-2 flex items-center gap-2">
@@ -462,7 +454,6 @@ const TimeTrialComponent = () => {
             </div>
           )}
 
-          {/* Previous Baselines */}
           {selectedModality && previousBaselines.length > 0 && (
             <div>
               <button
@@ -478,13 +469,13 @@ const TimeTrialComponent = () => {
                   {previousBaselines.map((baseline, index) => (
                     <div key={index} className="bg-gray-50 p-3 rounded border">
                       <div className="flex justify-between items-center">
-                        <span className="font-medium">{baseline.baseline_units_per_minute?.toFixed(2)} units/min</span>
+                        <span className="font-medium">{baseline.calculated_rpm?.toFixed(2)} units/min</span>
                         <span className="text-sm text-gray-500">
-                          {new Date(baseline.completed_at).toLocaleDateString()}
+                          {new Date(baseline.date).toLocaleDateString()}
                         </span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        Score: {baseline.score} | {baseline.duration_minutes} minutes
+                        Score: {baseline.total_output} | {Math.round(baseline.duration_seconds / 60)} minutes
                       </div>
                     </div>
                   ))}
@@ -495,14 +486,13 @@ const TimeTrialComponent = () => {
         </div>
       </div>
 
-      {/* Instructions */}
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h3 className="font-medium text-blue-900 mb-2">Time Trial Instructions</h3>
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• <strong>Goal:</strong> Maximum effort for 10 minutes to achieve the highest possible score</li>
           <li>• Select your equipment/modality first</li>
           <li>• You'll get notifications at 5 minutes (halfway) and 1 minute remaining</li>
-          <li>• Record your final score in any units (calories, meters, kilometers, miles, or watts)</li>
+          <li>• Record your final score in any units (cal, watts, mph, kph, miles, meters)</li>
           <li>• Your baseline = Score ÷ 10 minutes = units per minute</li>
           <li>• This baseline determines pacing targets for all future workouts in this modality</li>
           <li>• You can retake time trials anytime to update your baseline</li>
