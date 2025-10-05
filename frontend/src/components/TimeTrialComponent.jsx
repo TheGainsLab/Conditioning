@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw, CheckCircle, Clock, Trophy, TrendingUp } from 'lucide-react';
+import databaseService from '../services/databaseService';
 
 const TimeTrialComponent = () => {
   // Timer state
@@ -19,10 +20,8 @@ const TimeTrialComponent = () => {
   const [previousBaselines, setPreviousBaselines] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   
-  // Database connection
-  const [supabaseUrl] = useState('https://jucqobldwrhehufxdisd.supabase.co');
-  const [supabaseKey, setSupabaseKey] = useState('');
-const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');  
+  // Database connection state
+  const [connected, setConnected] = useState(false);
   const intervalRef = useRef(null);
 
   // Available units - matching your database constraints
@@ -78,32 +77,30 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
     return () => clearInterval(intervalRef.current);
   }, [isRunning, timeRemaining]);
 
+  // Check connection status on mount
+  useEffect(() => {
+    setConnected(databaseService.isConnected());
+    
+    const unsubscribe = databaseService.subscribe((apiKey) => {
+      setConnected(!!apiKey);
+    });
+    
+    return unsubscribe;
+  }, []);
+
   // Load previous baselines for selected modality
   useEffect(() => {
-    if (selectedModality && supabaseKey) {
+    if (selectedModality && connected) {
       loadPreviousBaselines();
     }
-  }, [selectedModality, supabaseKey]);
+  }, [selectedModality, connected]);
 
   const loadPreviousBaselines = async () => {
-    if (!supabaseKey) return;
+    if (!connected) return;
     
     try {
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/time_trials?user_id=eq.${userId}&modality=eq.${selectedModality}&order=created_at.desc&limit=5`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPreviousBaselines(data);
-      }
+      const data = await databaseService.loadPreviousBaselines(selectedModality, 5);
+      setPreviousBaselines(data);
     } catch (error) {
       console.error('Failed to load previous baselines:', error);
     }
@@ -165,7 +162,7 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
   };
 
   const submitTimeTrial = async () => {
-    if (!baseline || !selectedModality || !units || !supabaseKey) {
+    if (!baseline || !selectedModality || !units || !connected) {
       alert('Please complete all fields and connect to database');
       return;
     }
@@ -174,7 +171,7 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
     
     try {
       const timeTrialData = {
-        user_id: userId,
+        user_id: databaseService.userId,
         modality: selectedModality,
         date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
         total_output: parseFloat(score),
@@ -184,26 +181,11 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
         is_current: true
       };
 
-      const response = await fetch(`${supabaseUrl}/rest/v1/time_trials`, {
-        method: 'POST',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify(timeTrialData)
-      });
-
-      if (response.ok) {
-        alert('Time trial saved successfully!');
-        loadPreviousBaselines();
-        console.log('Navigate to dashboard');
-      } else {
-        const errorText = await response.text();
-        console.error('Supabase error response:', response.status, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
+      await databaseService.saveTimeTrial(timeTrialData);
+      
+      alert('Time trial saved successfully!');
+      loadPreviousBaselines();
+      console.log('Navigate to dashboard');
     } catch (error) {
       console.error('Error saving time trial:', error);
       alert('Failed to save time trial. Please try again.');
@@ -224,19 +206,11 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
         </p>
       </div>
 
-      {!supabaseKey && (
+      {!connected && (
         <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <h3 className="font-medium text-yellow-900 mb-2">Database Connection Required</h3>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              placeholder="Enter your Supabase API key to save results"
-              className="flex-1 px-3 py-2 border border-yellow-300 rounded focus:ring-2 focus:ring-yellow-500"
-              onChange={(e) => setSupabaseKey(e.target.value)}
-            />
-          </div>
-          <p className="text-sm text-yellow-700 mt-1">
-            Without database connection, you can practice but results won't be saved.
+          <p className="text-sm text-yellow-700">
+            Please connect to your database from the Dashboard to save your time trial results.
           </p>
         </div>
       )}
@@ -446,7 +420,7 @@ const [userId] = useState('910e5b5b-fa51-4c10-a219-2b537eee0ea5');
               
               <button
                 onClick={submitTimeTrial}
-                disabled={isSubmitting || !supabaseKey}
+                disabled={isSubmitting || !connected}
                 className="mt-3 w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : 'Save & Return to Dashboard'}

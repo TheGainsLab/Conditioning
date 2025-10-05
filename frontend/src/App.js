@@ -2,9 +2,21 @@ import React, { useState } from 'react';
 import './App.css';
 import TimeTrialComponent from './components/TimeTrialComponent';
 import Dashboard from './components/Dashboard';
+import TrainingDayComponent from './components/TrainingDayComponent';
 
 function App() {
   const [currentView, setCurrentView] = useState('dashboard');
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  const handleDayClick = (dayNumber) => {
+    setSelectedDay(dayNumber);
+    setCurrentView('trainingday');
+  };
+
+  const handleBackToDashboard = () => {
+    setSelectedDay(null);
+    setCurrentView('dashboard');
+  };
 
   return (
     <div className="App">
@@ -24,8 +36,14 @@ function App() {
         </button>
       </div>
 
-      {currentView === 'dashboard' && <Dashboard />}
+      {currentView === 'dashboard' && <Dashboard onDayClick={handleDayClick} />}
       {currentView === 'timetrial' && <TimeTrialComponent />}
+      {currentView === 'trainingday' && selectedDay && (
+        <TrainingDayComponent 
+          dayNumber={selectedDay} 
+          onBack={handleBackToDashboard} 
+        />
+      )}
     </div>
   );
 }

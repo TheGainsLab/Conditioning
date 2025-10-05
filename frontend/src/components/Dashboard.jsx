@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Lock, Unlock, Trophy, TrendingUp, Settings, User, ChevronRight, Clock, CheckCircle } from 'lucide-react';
+import ApiKeyManager from './ApiKeyManager';
+import databaseService from '../services/databaseService';
 
-const Dashboard = () => {
+const Dashboard = ({ onDayClick }) => {
   // User state
   const [user, setUser] = useState({
     name: 'Demo User',
@@ -15,44 +17,41 @@ const Dashboard = () => {
     { day_number: 1 }, { day_number: 2 }, { day_number: 3 }, { day_number: 21 }
   ]); // Mock completed sessions
   
-  // Database connection
-  const [supabaseUrl] = useState('https://jucqobldwrhehufxdisd.supabase.co');
-  const [supabaseKey, setSupabaseKey] = useState('');
-  const [connected, setConnected] = useState(false); // Will be true when API key is entered
-  const [userId] = useState(1);
+  // Database connection state
+  const [connected, setConnected] = useState(false);
 
   // Program structure - 36 months, 20 days each = 720 days
   const totalMonths = 36;
   const daysPerMonth = 20;
 
   useEffect(() => {
-    if (supabaseKey) {
-      setConnected(true);
+    // Check if already connected
+    setConnected(databaseService.isConnected());
+    
+    if (databaseService.isConnected()) {
       loadUserData();
       loadWorkouts();
       loadCompletedSessions();
     }
-  }, [supabaseKey]);
+  }, []);
+
+  const handleConnectionChange = (isConnected) => {
+    setConnected(isConnected);
+    if (isConnected) {
+      loadUserData();
+      loadWorkouts();
+      loadCompletedSessions();
+    }
+  };
 
   const loadUserData = async () => {
-    if (!supabaseKey) return;
+    if (!databaseService.isConnected()) return;
     
     setLoading(true);
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${userId}`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.length > 0) {
-          setUser(data[0]);
-          setConnected(true);
-        }
+      const userData = await databaseService.loadUserData();
+      if (userData) {
+        setUser(userData);
       }
     } catch (error) {
       console.error('Failed to load user data:', error);
@@ -62,42 +61,22 @@ const Dashboard = () => {
   };
 
   const loadWorkouts = async () => {
-    if (!supabaseKey) return;
+    if (!databaseService.isConnected()) return;
     
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/workouts?order=day_number.asc`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setWorkouts(data);
-      }
+      const workoutData = await databaseService.loadWorkouts();
+      setWorkouts(workoutData);
     } catch (error) {
       console.error('Failed to load workouts:', error);
     }
   };
 
   const loadCompletedSessions = async () => {
-    if (!supabaseKey) return;
+    if (!databaseService.isConnected()) return;
     
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/workout_sessions?user_id=eq.${userId}`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setCompletedSessions(data);
-      }
+      const sessionsData = await databaseService.loadCompletedSessions();
+      setCompletedSessions(sessionsData);
     } catch (error) {
       console.error('Failed to load completed sessions:', error);
     }
@@ -138,8 +117,11 @@ const Dashboard = () => {
     if (status === 'locked') return;
     
     // Navigate to workout day or time trial
-    console.log(`Navigate to day ${dayNumber}`);
-    // This will integrate with routing when we add React Router
+    if (onDayClick) {
+      onDayClick(dayNumber);
+    } else {
+      console.log(`Navigate to day ${dayNumber}`);
+    }
   };
 
   const renderMonthGrid = () => {
@@ -239,25 +221,10 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Database Connection - Optional for demo */}
-      {!supabaseKey && (
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-medium text-blue-900 mb-2">Demo Mode - Connect for Real Data</h3>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                placeholder="Enter your Supabase API key for live data"
-                className="flex-1 px-3 py-2 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500"
-                onChange={(e) => setSupabaseKey(e.target.value)}
-              />
-            </div>
-            <p className="text-sm text-blue-700 mt-1">
-              Currently showing demo data. Enter API key to connect to your real database.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Database Connection */}
+      <div className="max-w-7xl mx-auto px-6 py-4">
+        <ApiKeyManager onConnectionChange={handleConnectionChange} />
+      </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
